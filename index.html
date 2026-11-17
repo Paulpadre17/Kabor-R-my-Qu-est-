@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#092b58">
+<title>Kaboré Rémy — The Campus Quest</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08182c;color:#fff;font-family:system-ui,-apple-system,Segoe UI,sans-serif;touch-action:none}
+#wrap{position:relative;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#08182c}
+canvas{display:block;width:min(100vw,177.78vh);height:min(100vh,56.25vw);max-width:100%;max-height:100%;image-rendering:pixelated;background:#6caa58}
+#hud{position:absolute;inset:0;pointer-events:none;padding:10px;display:flex;flex-direction:column;justify-content:space-between}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.panel{background:#08264ddd;border:2px solid #58c8ff;border-radius:12px;padding:8px 11px;box-shadow:0 3px 0 #04172b;font-size:clamp(11px,2.3vw,15px)}
+.brand{font-weight:900;letter-spacing:.4px}.small{font-size:.83em;opacity:.92}
+#votes{font-weight:800;color:#ffe36a}
+#mission{max-width:48%;align-self:flex-start}
+#dialog{display:none;position:absolute;left:50%;bottom:15%;transform:translateX(-50%);width:min(90%,520px);pointer-events:auto;background:#08264df2;border:3px solid #59c8ff;border-radius:14px;padding:12px;box-shadow:0 5px 0 #04172b}
+#dialog strong{color:#ffe36a}#dialog p{margin:7px 0 10px;font-size:14px}
+button{border:0;border-radius:10px;background:#ffd84c;color:#10213a;font-weight:800;padding:10px 14px;font-size:14px}
+.controls{display:flex;justify-content:space-between;align-items:flex-end;pointer-events:auto}
+.pad{display:grid;grid-template-columns:42px 42px 42px;grid-template-rows:42px 42px 42px;gap:3px}
+.pad button,.action{background:#08264dcc;color:white;border:2px solid #74d5ff;border-radius:12px;padding:0;font-size:20px;touch-action:none}
+.pad .up{grid-column:2}.pad .left{grid-column:1;grid-row:2}.pad .down{grid-column:2;grid-row:2}.pad .right{grid-column:3;grid-row:2}
+.action{width:74px;height:74px;border-radius:50%;font-size:13px;font-weight:900}
+#hint{align-self:center;margin-bottom:8px}
+@media(min-width:800px){.pad{transform:scale(1.15);transform-origin:bottom left}.action{width:84px;height:84px}}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" width="960" height="540" aria-label="Jeu Kaboré Rémy Campus Quest"></canvas>
+<div id="hud">
+ <div class="top">
+  <div class="panel"><div class="brand">KABORÉ RÉMY</div><div class="small">Candidat — Association des étudiants politologues · IUA</div><div id="votes">⭐ Soutiens : 0</div></div>
+  <div class="panel" id="mission"><b>MISSION</b><div class="small">Parle aux étudiants et présente le programme.</div></div>
+ </div>
+ <div class="panel small" id="hint">Approche-toi d'un étudiant puis appuie sur INTERAGIR.</div>
+ <div class="controls">
+  <div class="pad">
+   <button class="up" data-dir="up">▲</button><button class="left" data-dir="left">◀</button>
+   <button class="down" data-dir="down">▼</button><button class="right" data-dir="right">▶</button>
+  </div>
+  <button class="action" id="interact">INTERAGIR</button>
+ </div>
+</div>
+<div id="dialog"><strong id="speaker">Étudiant</strong><p id="line"></p><button id="yes">Je soutiens ! +1</button> <button id="later" style="background:#d9e8f5">Continuer</button></div>
+</div>
+<script>
+(()=>{
+const c=document.getElementById('game'),ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;
+const W=960,H=540;let keys={up:false,down:false,left:false,right:false},votes=0,dialogue=null,done=new Set(),sound=true;
+const player={x:480,y:335,speed:2.5,face:'down'};
+const npcs=[
+{x:330,y:230,name:'Aïcha',line:'Salut Rémy ! Que proposes-tu pour améliorer la vie des étudiants ?'},
+{x:620,y:280,name:'Yao',line:'Je veux en savoir plus sur ton projet pour notre association.'},
+{x:245,y:420,name:'Mariam',line:'Comment comptes-tu mieux représenter les étudiants politologues ?'},
+{x:745,y:420,name:'Koffi',line:'Je suis intéressé. Où peut-on suivre ta campagne ?'},
+{x:500,y:170,name:'Étudiant',line:'Pourquoi devrais-je participer à cette élection ?'}
+];
+function rect(x,y,w,h,col){ctx.fillStyle=col;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function text(t,x,y,size=14,col='#fff'){ctx.fillStyle=col;ctx.font=`bold ${size}px monospace`;ctx.fillText(t,x,y)}
+function tree(x,y){rect(x-5,y+10,10,20,'#75452c');rect(x-18,y-4,36,22,'#23713e');rect(x-13,y-12,26,18,'#399b4d');rect(x-6,y-17,12,12,'#62b95b')}
+function car(x,y,color){rect(x,y,76,34,color);rect(x+12,y-12,48,18,'#b9d8df');rect(x+8,y+27,14,10,'#17202a');rect(x+54,y+27,14,10,'#17202a')}
+function draw(){
+ rect(0,0,W,H,'#77b95e');
+ // grass and campus paths
+ for(let y=0;y<H;y+=28)for(let x=0;x<W;x+=28)if((x+y)%3===0)rect(x+5,y+7,3,3,'#68a94f');
+ rect(0,0,W,105,'#c7b18c');rect(0,0,W,12,'#8a765d');
+ // academic building
+ rect(310,20,340,105,'#d6c3a2');rect(300,16,360,15,'#8e765d');
+ for(let x=330;x<640;x+=58){rect(x,48,28,34,'#5b8290');rect(x+3,51,22,28,'#a7d4dc')}
+ rect(430,82,100,43,'#6e513e');rect(440,91,80,34,'#3c6673');
+ text('IUA',458,44,19,'#123d70');
+ // walkways
+ rect(395,125,170,415,'#d5c39d');rect(0,270,960,100,'#d5c39d');rect(400,265,160,100,'#c6b28d');
+ // gate
+ rect(355,125,12,100,'#3a4246');rect(593,125,12,100,'#3a4246');rect(367,132,226,7,'#39454b');
+ // fence
+ for(let x=20;x<340;x+=20){rect(x,140,3,90,'#59656a');rect(x-2,140,7,4,'#37444a')}
+ for(let x=620;x<940;x+=20){rect(x,140,3,90,'#59656a');rect(x-2,140,7,4,'#37444a')}
+ // trees
+ [[70,80],[160,100],[250,85],[700,90],[820,85],[900,190],[80,440],[180,480],[700,480],[875,460],[320,320],[650,330]].forEach(p=>tree(...p));
+ // bench and cars
+ rect(55,385,105,9,'#80512f');rect(65,394,8,22,'#5c3d2c');rect(145,394,8,22,'#5c3d2c');
+ car(35,220,'#4a9da5');car(820,300,'#a76e45');
+ // campaign poster
+ rect(800,145,120,105,'#f0e5cb');rect(806,151,108,93,'#164d91');text('KABORÉ',814,178,13);text('RÉMY',824,198,16,'#ffe36a');text('VOTEZ',822,222,13);
+ // NPCs
+ npcs.forEach((n,i)=>drawPerson(n.x,n.y,i%2?'#d5a16b':'#e8c5a1',false));
+ drawPerson(player.x,player.y,'#e0a77d',true);
+ // nearby marker
+ const near=nearest();if(near&& !dialogue){text('●',near.x-4,near.y-24,18,'#ffe36a')}
+}
+function drawPerson(x,y,skin,isPlayer){
+ // shadow
+ rect(x-10,y+10,22,5,'#5b584b');
+ // legs
+ rect(x-8,y+3,7,12,'#172e50');rect(x+2,y+3,7,12,'#172e50');
+ // jacket/body
+ rect(x-11,y-15,23,22,isPlayer?'#142d58':'#e9e8e1');
+ if(isPlayer){rect(x-4,y-13,8,20,'#2878a8');rect(x-2,y-10,4,11,'#d9d9e8')}
+ // head/hair
+ rect(x-8,y-31,17,16,skin);rect(x-9,y-33,18,7,'#211b1b');rect(x-7,y-20,3,2,'#211b1b');rect(x+3,y-20,3,2,'#211b1b');
+}
+function nearest(){let best=null,d=1e9;npcs.forEach((n,i)=>{let dd=Math.hypot(n.x-player.x,n.y-player.y);if(dd<d){d=dd;best={...n,index:i,d}}});return d<58?best:null}
+function move(){if(dialogue)return;let dx=(keys.right?1:0)-(keys.left?1:0),dy=(keys.down?1:0)-(keys.up?1:0);if(dx&&dy){dx*=.707;dy*=.707}player.x=Math.max(25,Math.min(935,player.x+dx*player.speed));player.y=Math.max(55,Math.min(515,player.y+dy*player.speed))}
+function interact(){if(dialogue){return}let n=nearest();if(!n){document.getElementById('hint').textContent='Rapproche-toi d’un étudiant pour discuter.';return}
+ dialogue=n;document.getElementById('speaker').textContent=n.name;document.getElementById('line').textContent=done.has(n.index)?'Merci pour la discussion ! Continue à explorer le campus.':n.line;document.getElementById('dialog').style.display='block';
+ document.getElementById('yes').style.display=done.has(n.index)?'none':'inline-block';
+}
+document.getElementById('yes').onclick=()=>{if(dialogue&&!done.has(dialogue.index)){done.add(dialogue.index);votes++;document.getElementById('votes').textContent='⭐ Soutiens : '+votes;document.getElementById('mission').innerHTML='<b>MISSION</b><div class="small">Étudiants rencontrés : '+done.size+'/'+npcs.length+'. Continue ta tournée !</div>'}closeDialog()};
+document.getElementById('later').onclick=closeDialog;
+function closeDialog(){dialogue=null;document.getElementById('dialog').style.display='none'}
+document.querySelectorAll('[data-dir]').forEach(b=>{let d=b.dataset.dir;const on=e=>{e.preventDefault();keys[d]=true},off=e=>{e.preventDefault();keys[d]=false};b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,off))});
+document.getElementById('interact').onclick=interact;
+window.addEventListener('keydown',e=>{let map={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right',e:'interact',Enter:'interact'};let v=map[e.key];if(v==='interact')interact();else if(v){keys[v]=true;e.preventDefault()}});
+window.addEventListener('keyup',e=>{let map={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',w:'up',s:'down',a:'left',d:'right'};if(map[e.key])keys[map[e.key]]=false});
+function loop(){move();draw();requestAnimationFrame(loop)}loop();
+})();
+</script>
+</body></html>
